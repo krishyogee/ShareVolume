@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading Company Data...</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+            margin-top: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 25px;
+            font-size: 2.2em;
+        }
+        .data-section {
+            display: none;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        .data-card {
+            background-color: #ecf0f1;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px;
+            flex: 1;
+            min-width: 280px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            text-align: left;
+        }
+        .data-card h2 {
+            color: #34495e;
+            font-size: 1.5em;
+            margin-top: 0;
+            border-bottom: 2px solid #bdc3c7;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .data-card p {
+            margin: 10px 0;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .data-card p strong {
+            color: #2980b9;
+            font-size: 1.2em;
+        }
+        .label {
+            font-weight: bold;
+            color: #555;
+        }
+        .value {
+            color: #007bff;
+            font-weight: 600;
+        }
+        #loading-message {
+            margin-top: 20px;
+            font-style: italic;
+            color: #777;
+        }
+        .error-message {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="app-container">
+        <h1 id="share-entity-name">Loading Company Name...</h1>
+        <p id="loading-message">Fetching data, please wait...</p>
+
+        <div class="data-section">
+            <div class="data-card">
+                <h2>Maximum Shares Outstanding</h2>
+                <p><span class="label">Value:</span> <strong id="share-max-value" class="value">N/A</strong></p>
+                <p><span class="label">Fiscal Year:</span> <strong id="share-max-fy" class="value">N/A</strong></p>
+            </div>
+            <div class="data-card">
+                <h2>Minimum Shares Outstanding</h2>
+                <p><span class="label">Value:</span> <strong id="share-min-value" class="value">N/A</strong></p>
+                <p><span class="label">Fiscal Year:</span> <strong id="share-min-fy" class="value">N/A</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_CIK = '0000813672';
+        const USER_AGENT = 'CadenceDesignSystems/1.0 (contact@example.com)'; 
+        const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+
+        async function loadCompanyData(cik) {
+            const secApiBaseUrl = `https://data.sec.gov/api/xbrl/companyconcept/CIK${cik}/dei/EntityCommonStockSharesOutstanding.json`;
+            let fetchUrl = secApiBaseUrl;
+            let headers = {};
+
+            if (cik !== DEFAULT_CIK) {
+                fetchUrl = `${PROXY_URL}${encodeURIComponent(secApiBaseUrl)}`;
+            } else {
+                headers['User-Agent'] = USER_AGENT;
+            }
+
+            try {
+                const response = await fetch(fetchUrl, { headers });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!data || !data.entityName || !data.units || !data.units.shares) {
+                    throw new Error("Invalid or incomplete data received from the SEC API.");
+                }
+
+                let entityName = data.entityName;
+                if (cik === DEFAULT_CIK) {
+                    entityName = "Cadence Design Systems";
+                }
+
+                const shares = data.units.shares;
+
+                const filteredShares = shares.filter(entry => {
+                    return parseInt(entry.fy) > 2020 && typeof entry.val === 'number';
+                });
+
+                if (filteredShares.length === 0) {
+                    document.getElementById('loading-message').classList.add('error-message');
+                    document.getElementById('loading-message').textContent = `No relevant share data found for CIK ${cik} after filtering (fy > 2020).`;
+                    document.getElementById('share-entity-name').textContent = entityName;
+                    document.getElementById('share-max-value').textContent = 'N/A';
+                    document.getElementById('share-max-fy').textContent = 'N/A';
+                    document.getElementById('share-min-value').textContent = 'N/A';
+                    document.getElementById('share-min-fy').textContent = 'N/A';
+                    document.querySelector('.data-section').style.display = 'flex';
+                    document.title = `${entityName} - No Data`;
+                    return;
+                }
+
+                let maxValEntry = filteredShares[0];
+                let minValEntry = filteredShares[0];
+
+                for (const entry of filteredShares) {
+                    if (entry.val > maxValEntry.val) {
+                        maxValEntry = entry;
+                    }
+                    if (entry.val < minValEntry.val) {
+                        minValEntry = entry;
+                    }
+                }
+
+                document.title = `${entityName} - Share Data`;
+                document.getElementById('share-entity-name').textContent = entityName;
+
+                document.getElementById('share-max-value').textContent = maxValEntry.val.toLocaleString();
+                document.getElementById('share-max-fy').textContent = maxValEntry.fy;
+
+                document.getElementById('share-min-value').textContent = minValEntry.val.toLocaleString();
+                document.getElementById('share-min-fy').textContent = minValEntry.fy;
+
+                document.getElementById('loading-message').style.display = 'none';
+                document.querySelector('.data-section').style.display = 'flex';
+
+            } catch (error) {
+                console.error("Error loading company data:", error);
+                document.getElementById('loading-message').classList.add('error-message');
+                document.getElementById('loading-message').textContent = `Error loading data for CIK ${cik}: ${error.message}. Please check the CIK or try again.`;
+                document.title = `Error - CIK ${cik}`;
+                document.getElementById('share-entity-name').textContent = `Error loading data for CIK ${cik}`;
+                document.getElementById('share-max-value').textContent = 'N/A';
+                document.getElementById('share-max-fy').textContent = 'N/A';
+                document.getElementById('share-min-value').textContent = 'N/A';
+                document.getElementById('share-min-fy').textContent = 'N/A';
+                document.querySelector('.data-section').style.display = 'flex';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const cikParam = urlParams.get('CIK');
+
+            if (cikParam && /^\d{10}$/.test(cikParam)) {
+                loadCompanyData(cikParam);
+            } else {
+                loadCompanyData(DEFAULT_CIK);
+            }
+        });
+    </script>
+</body>
+</html>
