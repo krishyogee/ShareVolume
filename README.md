@@ -1,2 +1,3 @@
 bash
-    pip install requests
+    git clone https://github.com/krishyogee/ShareVolume.git
+    cd ShareVolume
